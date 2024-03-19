@@ -64,7 +64,7 @@ it is always scoped to the host Activity or Fragment. This means that calling `v
 different factories in the same host Activity/Fragment don't have the desired effect; the _first_
 factory will be always used.
 
-This is the case of the [DetailsViewModel](detailsViewModel), which takes the name of
+This is the case of the [DetailsViewModel](/app/src/main/java/androidx/compose/samples/crane/details/DetailsViewModel.kt), which takes the name of
 a `City` as a parameter to load the required information for the screen. However, the above isn't a
 problem in this sample, since `DetailsScreen` is always used in it's own newly launched Activity.
 
@@ -75,7 +75,7 @@ the [documentation says](https://developers.google.com/maps/documentation/androi
 and include it in the `local.properties` file as follows:
 
 ```
-googleMapsKey=insert_your_api_key_here
+MAPS_API_KEY=insert_your_api_key_here
 ```
 
 When restricting the Key to Android apps, use `androidx.compose.samples.crane` as package name, and

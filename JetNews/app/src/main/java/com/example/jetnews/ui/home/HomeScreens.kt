@@ -24,9 +24,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,9 +41,8 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -102,7 +103,6 @@ import com.example.jetnews.ui.article.postContentItems
 import com.example.jetnews.ui.article.sharePost
 import com.example.jetnews.ui.components.JetnewsSnackbarHost
 import com.example.jetnews.ui.modifiers.interceptKey
-import com.example.jetnews.ui.rememberContentPaddingForScreen
 import com.example.jetnews.ui.theme.JetnewsTheme
 import com.example.jetnews.ui.utils.BookmarkButton
 import com.example.jetnews.ui.utils.FavoriteButton
@@ -143,11 +143,7 @@ fun HomeFeedWithArticleDetailsScreen(
         openDrawer = openDrawer,
         snackbarHostState = snackbarHostState,
         modifier = modifier,
-    ) { hasPostsUiState, contentModifier ->
-        val contentPadding = rememberContentPaddingForScreen(
-            additionalTop = if (showTopAppBar) 0.dp else 8.dp,
-            excludeTop = showTopAppBar
-        )
+    ) { hasPostsUiState, contentPadding, contentModifier ->
         Row(contentModifier) {
             PostList(
                 postsFeed = hasPostsUiState.postsFeed,
@@ -245,17 +241,14 @@ fun HomeFeedScreen(
         openDrawer = openDrawer,
         snackbarHostState = snackbarHostState,
         modifier = modifier
-    ) { hasPostsUiState, contentModifier ->
+    ) { hasPostsUiState, contentPadding, contentModifier ->
         PostList(
             postsFeed = hasPostsUiState.postsFeed,
             favorites = hasPostsUiState.favorites,
             showExpandedSearch = !showTopAppBar,
             onArticleTapped = onSelectPost,
             onToggleFavorite = onToggleFavorite,
-            contentPadding = rememberContentPaddingForScreen(
-                additionalTop = if (showTopAppBar) 0.dp else 8.dp,
-                excludeTop = showTopAppBar
-            ),
+            contentPadding = contentPadding,
             modifier = contentModifier,
             state = homeListLazyListState,
             searchInput = searchInput,
@@ -285,6 +278,7 @@ private fun HomeScreenWithList(
     modifier: Modifier = Modifier,
     hasPostsContent: @Composable (
         uiState: HomeUiState.HasPosts,
+        contentPadding: PaddingValues,
         modifier: Modifier
     ) -> Unit
 ) {
@@ -302,9 +296,7 @@ private fun HomeScreenWithList(
         },
         modifier = modifier
     ) { innerPadding ->
-        val contentModifier = Modifier
-            .padding(innerPadding)
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
+        val contentModifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
 
         LoadingContent(
             empty = when (uiState) {
@@ -316,13 +308,14 @@ private fun HomeScreenWithList(
             onRefresh = onRefreshPosts,
             content = {
                 when (uiState) {
-                    is HomeUiState.HasPosts -> hasPostsContent(uiState, contentModifier)
+                    is HomeUiState.HasPosts ->
+                        hasPostsContent(uiState, innerPadding, contentModifier)
                     is HomeUiState.NoPosts -> {
                         if (uiState.errorMessages.isEmpty()) {
                             // if there are no posts, and no error, let the user refresh manually
                             TextButton(
                                 onClick = onRefreshPosts,
-                                modifier.fillMaxSize()
+                                modifier.padding(innerPadding).fillMaxSize()
                             ) {
                                 Text(
                                     stringResource(id = R.string.home_tap_to_load_content),
@@ -331,7 +324,11 @@ private fun HomeScreenWithList(
                             }
                         } else {
                             // there's currently an error showing, don't show any content
-                            Box(contentModifier.fillMaxSize()) { /* empty screen */ }
+                            Box(
+                                contentModifier
+                                    .padding(innerPadding)
+                                    .fillMaxSize()
+                            ) { /* empty screen */ }
                         }
                     }
                 }
@@ -535,11 +532,14 @@ private fun PostListPopularSection(
             text = stringResource(id = R.string.home_popular_section_title),
             style = MaterialTheme.typography.titleLarge
         )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .height(IntrinsicSize.Max)
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(posts) { post ->
+            for (post in posts) {
                 PostCardPopular(
                     post,
                     navigateToArticle
