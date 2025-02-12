@@ -15,17 +15,23 @@ on:
 
 env:
   SAMPLE_PATH: JetNews
-
+  compose_store_password: ${{ secrets.compose_store_password }}
+  compose_key_alias: ${{ secrets.compose_key_alias }}
+  compose_key_password: ${{ secrets.compose_key_password }}
 jobs:
   build:
     uses: ./.github/workflows/build-sample.yml
     with:
       name: JetNews
       path: JetNews
+    secrets:
+      compose_store_password: ${{ secrets.COMPOSE_STORE_PASSWORD }}
+      compose_key_alias: ${{ secrets.COMPOSE_KEY_ALIAS }}
+      compose_key_password: ${{ secrets.COMPOSE_KEY_PASSWORD }}
 
   androidTest:
     needs: build
-    runs-on: macOS-latest # enables hardware acceleration in the virtual machine
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
@@ -34,7 +40,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+      - name: Enable KVM group perms
+        run: |
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
       - name: Copy CI gradle.properties
         run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
 
@@ -54,7 +64,6 @@ jobs:
             ~/.gradle/caches/jars-*
             ~/.gradle/caches/build-cache-*
           key: gradle-${{ hashFiles('checksum.txt') }}
-
       - name: Run instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:

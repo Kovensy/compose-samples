@@ -21,7 +21,6 @@ import android.content.res.Configuration.UI_MODE_NIGHT_YES
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -32,11 +31,14 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,8 +52,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +67,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.TopAppBarState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -108,8 +113,6 @@ import com.example.jetnews.ui.utils.BookmarkButton
 import com.example.jetnews.ui.utils.FavoriteButton
 import com.example.jetnews.ui.utils.ShareButton
 import com.example.jetnews.ui.utils.TextSettingsButton
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
@@ -117,7 +120,6 @@ import kotlinx.coroutines.runBlocking
 /**
  * The home screen displaying the feed along with an article details.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedWithArticleDetailsScreen(
     uiState: HomeUiState,
@@ -160,7 +162,10 @@ fun HomeFeedWithArticleDetailsScreen(
                 onSearchInputChanged = onSearchInputChanged,
             )
             // Crossfade between different detail posts
-            Crossfade(targetState = hasPostsUiState.selectedPost) { detailPost ->
+            Crossfade(
+                targetState = hasPostsUiState.selectedPost,
+                label = "Detail Post Crossfade"
+            ) { detailPost ->
                 // Get the lazy list state for this detail view
                 val detailLazyListState by remember {
                     derivedStateOf {
@@ -170,28 +175,31 @@ fun HomeFeedWithArticleDetailsScreen(
 
                 // Key against the post id to avoid sharing any state between different posts
                 key(detailPost.id) {
-                    LazyColumn(
-                        state = detailLazyListState,
-                        contentPadding = contentPadding,
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxSize()
-                            .notifyInput {
-                                onInteractWithDetail(detailPost.id)
-                            }
-                    ) {
-                        stickyHeader {
-                            val context = LocalContext.current
-                            PostTopBar(
-                                isFavorite = hasPostsUiState.favorites.contains(detailPost.id),
-                                onToggleFavorite = { onToggleFavorite(detailPost.id) },
-                                onSharePost = { sharePost(detailPost, context) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .wrapContentWidth(Alignment.End)
-                            )
+                    Box {
+                        LazyColumn(
+                            state = detailLazyListState,
+                            contentPadding = contentPadding,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .fillMaxSize()
+                                .notifyInput {
+                                    onInteractWithDetail(detailPost.id)
+                                }
+                        ) {
+                            postContentItems(detailPost)
                         }
-                        postContentItems(detailPost)
+
+                        // Floating toolbar
+                        val context = LocalContext.current
+                        PostTopBar(
+                            isFavorite = hasPostsUiState.favorites.contains(detailPost.id),
+                            onToggleFavorite = { onToggleFavorite(detailPost.id) },
+                            onSharePost = { sharePost(detailPost, context) },
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.safeDrawing)
+                                .fillMaxWidth()
+                                .wrapContentWidth(Alignment.End)
+                        )
                     }
                 }
             }
@@ -299,6 +307,7 @@ private fun HomeScreenWithList(
         val contentModifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
 
         LoadingContent(
+            modifier = Modifier.padding(innerPadding),
             empty = when (uiState) {
                 is HomeUiState.HasPosts -> false
                 is HomeUiState.NoPosts -> uiState.isLoading
@@ -310,12 +319,15 @@ private fun HomeScreenWithList(
                 when (uiState) {
                     is HomeUiState.HasPosts ->
                         hasPostsContent(uiState, innerPadding, contentModifier)
+
                     is HomeUiState.NoPosts -> {
                         if (uiState.errorMessages.isEmpty()) {
                             // if there are no posts, and no error, let the user refresh manually
                             TextButton(
                                 onClick = onRefreshPosts,
-                                modifier.padding(innerPadding).fillMaxSize()
+                                modifier
+                                    .padding(innerPadding)
+                                    .fillMaxSize()
                             ) {
                                 Text(
                                     stringResource(id = R.string.home_tap_to_load_content),
@@ -376,21 +388,34 @@ private fun HomeScreenWithList(
  * @param onRefresh (event) event to request refresh
  * @param content (slot) the main content to show
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LoadingContent(
     empty: Boolean,
     emptyContent: @Composable () -> Unit,
     loading: Boolean,
     onRefresh: () -> Unit,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     if (empty) {
         emptyContent()
     } else {
-        SwipeRefresh(
-            state = rememberSwipeRefreshState(loading),
+        val refreshState = rememberPullToRefreshState()
+        PullToRefreshBox(
+            isRefreshing = loading,
             onRefresh = onRefresh,
-            content = content,
+            content = { content() },
+            state = refreshState,
+            indicator = {
+                Indicator(
+                    modifier = modifier
+                        .align(Alignment.TopCenter)
+                        .padding(),
+                    isRefreshing = loading,
+                    state = refreshState
+                )
+            }
         )
     }
 }
@@ -575,7 +600,7 @@ private fun PostListHistorySection(
  */
 @Composable
 private fun PostListDivider() {
-    Divider(
+    HorizontalDivider(
         modifier = Modifier.padding(horizontal = 14.dp),
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     )
@@ -679,7 +704,7 @@ private fun HomeTopAppBar(
                 painter = painterResource(R.drawable.ic_jetnews_wordmark),
                 contentDescription = title,
                 contentScale = ContentScale.Inside,
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -687,8 +712,7 @@ private fun HomeTopAppBar(
             IconButton(onClick = openDrawer) {
                 Icon(
                     painter = painterResource(R.drawable.ic_jetnews_logo),
-                    contentDescription = stringResource(R.string.cd_open_navigation_drawer),
-                    tint = MaterialTheme.colorScheme.primary
+                    contentDescription = stringResource(R.string.cd_open_navigation_drawer)
                 )
             }
         },

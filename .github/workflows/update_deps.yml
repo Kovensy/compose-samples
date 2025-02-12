@@ -2,7 +2,10 @@ name: Update Versions / Dependencies
 
 on:
   workflow_dispatch:
-
+env:
+  compose_store_password: ${{ secrets.COMPOSE_STORE_PASSWORD }}
+  compose_key_alias: ${{ secrets.COMPOSE_KEY_ALIAS }}
+  compose_key_password: ${{ secrets.COMPOSE_KEY_PASSWORD }}
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,7 +26,7 @@ jobs:
       run: ./scripts/duplicate_version_config.sh
     - name: Create pull request
       id: cpr
-      uses: peter-evans/create-pull-request@v6
+      uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.PAT }}
         commit-message: 🤖 Update Dependencies
